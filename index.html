@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ラテン語→教会ラテン語カタカナ変換（オフライン）</title>
+<style>
+  :root{
+    --mb:#4052a2; /* Marian Blue */
+    --gold:#F6C453; /* warm gold that harmonizes with Marian Blue */
+    --ink:#0f172a;
+    --bg:#f7f7fb;
+    --card:#ffffff;
+    --muted:#6b7280;
+    --ring: rgba(64,82,162,.35);
+  }
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, "Helvetica Neue", Arial, sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1000px 700px at 120% -10%, rgba(64,82,162,.12), transparent 60%),
+      radial-gradient(1200px 900px at -10% 120%, rgba(64,82,162,.10), transparent 55%),
+      var(--bg);
+    line-height:1.6;
+  }
+  .wrap{ max-width: 1100px; margin: clamp(16px, 4vw, 40px) auto; padding: 0 16px 32px; }
+  header{ display:flex; gap:16px; align-items:center; margin-bottom:16px; }
+  .logo{ width:40px;height:40px; color: var(--gold); filter: drop-shadow(0 5px 14px rgba(246,196,83,.35)); }
+  h1{ font-weight: 700; font-size: clamp(18px, 2.5vw, 24px); margin:0; letter-spacing:.02em; }
+
+  .card{
+    background: var(--card);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(15,23,42,.05), 0 1px 0 rgba(15,23,42,.06);
+    padding: 16px;
+    border: 1px solid rgba(64,82,162,.12);
+    overflow: hidden; /* prevent visual overflow beyond rounded corners */
+  }
+  .grid{ display:grid; gap:16px; align-items:stretch; }
+  @media(min-width:960px){ .grid{ grid-template-columns: 1.1fr .9fr; } }
+  textarea, .out{
+    width:100%; box-sizing:border-box;
+    min-height: 260px;
+    border-radius: 12px;
+    border:1px solid rgba(64,82,162,.25);
+    background:#fff;
+    padding: 12px 14px;
+    font-size: 16px;
+    outline: none;
+    transition: box-shadow .2s, border-color .2s, transform .02s ease;
+    font-family: inherit; /* unify with buttons */
+  }
+  textarea:focus, .out:focus{ border-color: var(--mb); box-shadow: 0 0 0 4px var(--ring); }
+  textarea{ resize: vertical; }
+  .out{
+    white-space: pre-wrap; word-break: break-word;
+    overflow: auto;                /* scroll inside */
+    scrollbar-gutter: stable;      /* keep layout stable with/without scrollbar */
+    -webkit-overflow-scrolling: touch;
+  }
+  /* soft, elegant scrollbars where supported */
+  .out::-webkit-scrollbar{ width: 10px; height: 10px; }
+  .out::-webkit-scrollbar-thumb{ background: rgba(64,82,162,.35); border-radius: 8px; }
+  .out::-webkit-scrollbar-track{ background: transparent; }
+  .out{ scrollbar-width: thin; scrollbar-color: rgba(64,82,162,.45) transparent; }
+
+  .toolbar{ display:flex;flex-wrap:wrap; gap:8px; margin: 10px 0 14px; }
+  button{
+    appearance:none; border:1px solid var(--mb);
+    background: linear-gradient(#fff, #f8f9ff);
+    color:var(--mb);
+    border-radius: 10px;
+    padding: 8px 12px; font-size: 14px; font-weight: 600;
+    letter-spacing:.02em; cursor:pointer;
+    transition:transform .06s ease, box-shadow .2s, background .2s, border-color .2s, color .2s;
+    box-shadow: 0 1px 0 rgba(64,82,162,.2), 0 6px 14px rgba(64,82,162,.14);
+    font-family: inherit;
+  }
+  button:hover{ transform: translateY(-1px); background: linear-gradient(#fff, #eef1ff); }
+  button:active{ transform: translateY(0); box-shadow: 0 1px 0 rgba(64,82,162,.2), 0 2px 6px rgba(64,82,162,.14); }
+  .btn-ghost{ background:transparent; border-color: rgba(64,82,162,.45); color: #364692; box-shadow:none; }
+
+  .settings{
+    display:flex; flex-wrap:wrap; gap:18px; align-items:center;
+    background: linear-gradient(180deg, rgba(64,82,162,.06), rgba(64,82,162,.08));
+    border:1px solid rgba(64,82,162,.18);
+    border-radius:12px; padding:10px 12px; margin:8px 0 2px;
+  }
+  .radios { display:flex; gap:10px; align-items:center; }
+  .radios label{ display:inline-flex; align-items:center; gap:6px; font-size:13px}
+  .radios input{ accent-color: var(--mb); }
+
+  .status{ font-size: 13px; color: #334155; display:flex; align-items:center; gap:8px; margin:6px 0 0;}
+  .status .dot{ width:8px;height:8px;border-radius:999px;background:#9ca3af; }
+  .status .dot.live{ background: #22c55e; }
+  .status .dot.paused{ background: #f59e0b; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <svg class="logo" aria-hidden="true" viewBox="0 0 24 24" role="img" focusable="false">
+        <path d="M10 2h4v8h6v4h-6v8h-4v-8H4v-4h6z" fill="currentColor"></path>
+      </svg>
+      <h1>ラテン語→<span style="color:var(--mb)">教会ラテン語カタカナ</span>変換</h1>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2 style="margin:0 0 8px;font-size:16px">入力</h2>
+        <div class="toolbar">
+          <button id="btn-clear" class="btn-ghost" title="入力を消去">入力をクリア</button>
+          <button id="btn-copy" title="出力をコピー">コピー</button>
+          <button id="btn-examples" class="btn-ghost" title="例文を挿入">例文を挿入</button>
+        </div>
+        <textarea id="input" placeholder="ここにラテン語を入力してください。6000字超は自動で停止します。"></textarea>
+
+        <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">待機中</span></div>
+      </section>
+
+      <section class="card">
+        <h2 style="margin:0 0 8px;font-size:16px">出力</h2>
+        <div id="output" class="out" role="status" aria-live="polite" aria-atomic="true"></div>
+      </section>
+    </div>
+  </div>
+
+<script>
+/* ===== Utility ===== */
+const byId = (id)=>document.getElementById(id);
+const inputEl = byId('input');
+const outEl   = byId('output');
+const dotEl   = byId('dot');
+const statusEl= byId('statusText');
+
+let vStyle = "vu"; // 'vu' for ヴ*, 'bu' for ブ*
+for(const r of document.querySelectorAll('input[name="vstyle"]')){
+  r.addEventListener('change', (e)=>{ vStyle = e.target.value; schedule(); });
+}
+
+/* ===== Buttons ===== */
+byId('btn-clear').addEventListener('click', ()=>{
+  inputEl.value='';
+  outEl.textContent='';
+  status('待機中', 'idle');
+  inputEl.focus();
+});
+byId('btn-examples').addEventListener('click', ()=>{
+  const ex = `Pater noster, qui es in caelis: Sanctificetur nomen tuum: Adveniat regnum tuum: Fiat voluntas tua, sicut in caelo, et in terra. Panem nostrum quotidianum da nobis hodie: Et dimitte nobis debita nostra, sicut et nos dimittimus debitoribus nostris. Et ne nos inducas in tentationem, sed libera nos a malo. Amen.`;
+  inputEl.value = ex;
+  schedule(true);
+});
+byId('btn-copy').addEventListener('click', async ()=>{
+  try{
+    await navigator.clipboard.writeText(outEl.textContent || '');
+    flash('出力をコピーしました。');
+  }catch(err){
+    alert('コピーに失敗しました。');
+  }
+});
+
+/* ===== Status UI ===== */
+function status(text, kind){
+  statusEl.textContent = text;
+  dotEl.classList.remove('live','paused');
+  if(kind==='live') dotEl.classList.add('live');
+  else if(kind==='paused') dotEl.classList.add('paused');
+}
+
+function flash(msg){
+  const b = document.createElement('div');
+  b.textContent = msg;
+  b.style.position='fixed'; b.style.left='50%'; b.style.top='20px';
+  b.style.transform='translateX(-50%)';
+  b.style.background='#fff'; b.style.border='1px solid rgba(64,82,162,.25)';
+  b.style.boxShadow='0 10px 30px rgba(64,82,162,.18)';
+  b.style.padding='8px 12px'; b.style.borderRadius='10px';
+  b.style.zIndex=9999; b.style.color='var(--ink)';
+  document.body.appendChild(b);
+  setTimeout(()=>b.remove(),1400);
+}
+
+/* ===== IME-safe live convert with debounce ===== */
+let isComposing = false;
+let timer = null;
+inputEl.addEventListener('compositionstart', ()=>{ isComposing=true; });
+inputEl.addEventListener('compositionend',  ()=>{ isComposing=false; schedule(); syncHeights(); });
+inputEl.addEventListener('input', ()=>{ if(!isComposing) schedule(); });
+
+function schedule(force=false){
+  if(timer) clearTimeout(timer);
+  timer = setTimeout(()=> convert(force), 140);
+}
+
+function convert(force=false){
+  let src = inputEl.value || '';
+  if(!force && src.length > 6000){
+    status('6000字超のためライブ変換を停止中。短くして再開してください。','paused');
+    return;
+  }
+  // Interjection pre-replace (ah!/oh!)
+  src = preReplaceText(src);
+
+  status('ライブ変換中…','live');
+  const out = latinToChurchKatakana(src);
+  outEl.textContent = out;
+  status('更新済み','live');
+  syncHeights();
+}
+
+/* ===== Equal bottom edges: robust height sync with ResizeObserver ===== */
+function syncHeights(){
+  const h = inputEl.getBoundingClientRect().height;
+  outEl.style.height = h + 'px';
+  outEl.style.minHeight = h + 'px';
+}
+const ro = new ResizeObserver(()=>syncHeights());
+ro.observe(inputEl);
+window.addEventListener('resize', ()=>setTimeout(syncHeights, 0));
+document.addEventListener('DOMContentLoaded', ()=>setTimeout(syncHeights, 0));
+
+/* ===== Core conversion ===== */
+
+function preReplaceText(t){
+  return (t||'')
+    .replace(/\bah\!/ig, 'アー!')
+    .replace(/\boh\!/ig, 'オー!');
+}
+
+/** Normalize accents & ligatures */
+function normalizeStrip(s){
+  return (s||'')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]+/g, '') // strip diacritics (á í ú é ó → a i u e o)
+    .replace(/æ/gi,'ae').replace(/œ/gi,'oe');
+}
+
+/** No automatic long-vowel marking */
+function markLongVowelsBeforeStrip(s){ return s; }
+
+/* ========= Exceptions ========= */
+const EXCEPTIONS_OBJ = {
+  "iesus":"イエズス",
+  "iesu":"イエズ",
+  "iesum":"イエズム",
+  "jesus":"イエズス",
+  "jesu":"イエズ",
+  "jesum":"イエズム",
+
+  "agnus":"アニュス",
+  "caelum":"チェルム",
+  "coelum":"チェルム",
+  "caelos":"チェロス",
+  "eleison":"エレイソン",
+  "eléison":"エレイソン",
+
+  "mater":"マーテル",
+  "israel":"イスラエル",
+  "excelsis":"エクシェルスィス",
+  "pater":"パーテル",
+  "nomen":"ノーメン",
+  "fiat":"フィアット",
+  "patri":"パートリ",
+  "saeculorum":"セクロールム",
+  "hyssopo":"イソポ",
+  "alleluia":"アレルヤ",
+  "voluntas":"ヴォルンタス",
+  "patris":"パートリス",
+  "patrem":"パートレム",
+  "patre":"パートレ",
+
+  "caeli":"チェリ",
+  "caelo":"チェロ",
+  "caelorum":"チェロルム",
+  "caelis":"チェリス",
+  "coelis":"チェリス",
+  "coeli":"チェリ",
+  "coelo":"チェロ",
+  "coele":"チェレ",
+  "coelorum":"チェロルム",
+  "coelos":"チェロス",
+
+  "descendit":"デシェンディト",
+
+  "crucifixus":"クルチフィクス",
+  "crucifixi":"クルチフィシ",
+  "crucifixo":"クルチフィソ",
+  "crucifixum":"クルチフィクム",
+  "crucifixe":"クルチフィセ",
+  "crucifixa":"クルチフィサ",
+  "crucifixae":"クルチフィセ",
+
+  "resurrexit":"レズレクスィト",
+
+  "ascendit":"アシェンディト",
+  "ascendo":"アシェンド",
+  "ascendi":"アシェンディ",
+
+  "procedit":"プロチェディト",
+  "procedo":"プロチェド",
+  "procedere":"プロチェデレ",
+  "processi":"プロチェッスィ",
+
+  "prophetas":"プロフェタス",
+  "propheta":"プロフェタ",
+  "prophetae":"プロフェテ",
+  "prophetam":"プロフェタム",
+  "prophetarum":"プロフェタルム",
+  "prophetis":"プロフェティス",
+
+  "exspecto":"エクスペクト",
+
+  "resurrectionem":"レズレクツィオネム",
+  "resurrectio":"レズレクツィオ",
+  "resurrectionis":"レズレクツィオニス",
+  "resurrectioni":"レズレクツィオニ",
+  "resurrectione":"レズレクツィオネ",
+  "resurrectiones":"レズレクツィオネス",
+
+  "ecclesiam":"エックレズィアム",
+  "eia":"エーヤ",
+
+  "signum":"シニュム",
+  "mihi":"ミキ",
+  "nihil":"ニキル",
+  "exaudi":"エグザウディ",
+  "exaudisti":"エグザウディスティ",
+  "michaeli":"ミカエリ",
+  "michael":"ミカエル",
+  "michaelem":"ミカエレム",
+  "archangelo":"アルカンジェロ",
+  "archangelum":"アルカンジェルム",
+  "archangeli":"アルカンジェリ",
+  "archangelus":"アルカンジェルス",
+  "philosophia":"フィロソフィア",
+  "melchisedech":"メルキセデク",
+  "cherubim":"ケルビム",
+  "joannes":"ヨアンネス",
+  "ioannes":"ヨアンネス",
+  "joseph":"ヨゼフ",
+  "ioseph":"ヨゼフ",
+  "joanna":"ヨアンナ",
+  "jacobe":"ヤコベ",
+  "jejunium":"イェユニウム",
+  "jerusalem":"イェルザレム",
+  "majestatem":"マイェスタテム",
+  "majestatis":"マイェスタティス",
+  "maiestas":"マイェスタス",
+  "raphael":"ラファエル",
+  "raphaelis":"ラファエリス",
+  "raphaeli":"ラファエリ",
+  "raphaelem":"ラファエルム",
+  "raphaele":"ラファエレ",
+  "exsules":"エクスレス",
+  "filii":"フィリィ"
+};
+const EXCEPTIONS = new Map(Object.entries(EXCEPTIONS_OBJ));
+const EXCEPTIONS_NORM = new Map([...EXCEPTIONS].map(([k, v]) => [ normalizeStrip(k), v ]));
+
+/** Helper */
+const isVowelChar = (ch)=> ch=== 'a' || ch==='e' || ch==='i' || ch==='o' || ch==='u' || ch==='y';
+
+/** Apply phoneme rules (order matters) */
+function applyPhonemeRules(w){
+  let s = w.toLowerCase();
+
+  // Word-initial I + vowel -> y...
+  s = s.replace(/^i(?=[aeiouy])/,'y');
+
+  // Placeholders
+  const PCH = '\uE000', PSH = '\uE001', S_SOPH = '\uE010', NY_PH = '\uE041', CC_EI = '\uE050', JY_PH = '\uE060';
+
+  // Preserve original J/j as JY_PH (child 'y' value)
+  s = s.replace(/[j]/g, JY_PH);
+
+  // Protect ch/sh
+  s = s.replace(/ch/g, PCH).replace(/sh/g, PSH);
+
+  // ph -> f
+  s = s.replace(/ph/g,'f');
+
+  // xsc + front vowels → ksh...
+  s = s.replace(/xsc(?=ae|e|i|oe|y)/g, 'ksh');
+
+  // cc(e|i) -> special placeholder (to yield ッチェ/ッチ later)
+  s = s.replace(/cc(e|i)/g, (_m,v)=> CC_EI + v);
+
+  // gu(e/i/ae/oe/y) → gw...
+  s = s.replace(/gu(e|i|ae|oe|y)/g, (_m, g1)=> 'gw' + g1);
+
+  // qu → kw
+  s = s.replace(/qu/g, 'kw');
+
+  // iu -> yu EXCEPT after n/l/r
+  s = (function replaceIU(s){
+    let out='';
+    for(let i=0;i<s.length;i++){
+      if(s[i]==='i' && s[i+1]==='u'){
+        const prev = s[i-1] || '';
+        if(!/[nlr]/.test(prev)){ out+='yu'; i+=1; continue; }
+      }
+      out += s[i];
+    }
+    return out;
+  })(s);
+
+  // sc + (e|i|ae|oe|y) → sh...
+  s = s.replace(/sc(e|i|ae|oe|y)/g, (_m, g1)=> PSH + g1);
+
+  // c before front vowels/diphthongs
+  s = s.replace(/c(ae|oe)/g, (_m,_g)=> PCH + 'e');           // cae/coe → che
+  s = s.replace(/c(e|i|y)/g, (_m, v)=> PCH + v);             // ce/ci/cy → ch+v
+  s = s.replace(/c/g, 'k');                                  // remaining c → k
+
+  // g before front vowels/diphthongs
+  s = s.replace(/g(ae|oe)/g, (_m,_g)=> 'je');                // gae/goe → je
+  s = s.replace(/g(e|i|y)/g, (_m, v)=> 'j' + v);             // ge/gi/gy → j+v (this 'j' is "soft g")
+
+  // z(e|i|y) → j(e|i|y)
+  s = s.replace(/z(?=[eiy])/g,'j');
+
+  // ti + vowel → tsi (NOT after s/t/x); use safe vowel checks
+  s = (function sReplaceTiToTsi(str){
+    let out = '';
+    for(let i=0;i<str.length;i++){
+      if(str[i]==='t' && str[i+1]==='i' && isVowelChar(str[i+2])){
+        const prev = str[i-1] || '';
+        out += (prev==='s'||prev==='t'||prev==='x') ? 'ti' : 'tsi';
+        i += 1; continue;
+      }
+      out += str[i];
+    }
+    return out;
+  })(s);
+
+  // gn between vowels only → NY placeholder (ɲɲ)
+  s = s.replace(/([aeiouy])gn([aeiouy])/g, (_m,a,b)=> a + NY_PH + b);
+
+  // mm -> nm (nasal assimilation)
+  s = s.replace(/mm/g,'nm');
+
+  // xs -> x (only when followed by 'u' : exsules)
+  s = s.replace(/xs(?=u)/g,'x');
+
+  // remove stray 'h'
+  s = s.replace(/h/g, '');
+
+  // restore ch/sh placeholders
+  s = s.replace(new RegExp(PCH,'g'),'ch').replace(new RegExp(PSH,'g'),'sh');
+
+  // chor- / chord- handling (after restoring ch)
+  s = s.replace(/chor(?!d)/g, 'koːr'); // コーr...
+  s = s.replace(/chord/g, 'kord');     // コルド...
+
+  // ae/oe -> e (after c/g handling)
+  s = s.replace(/ae/g,'e').replace(/oe/g,'e');
+
+  // soph head 's' protect (keep voiceless)
+  s = s.replace(/s(?=oph)/g, '\uE070'); // protect
+
+  // intervocalic s -> z (strict boundary-safe check)
+  s = (function voiceIntervocalicS(str){
+    let out='';
+    for(let i=0;i<str.length;i++){
+      const ch = str[i];
+      if(ch==='s' && isVowelChar(str[i-1]) && isVowelChar(str[i+1])) out+='z';
+      else out+=ch;
+    }
+    return out;
+  })(s);
+
+  // restore protected s
+  s = s.replace(/\uE070/g,'s');
+
+  // uu → u (shrink)
+  s = s.replace(/uu/g,'u');
+
+  return s;
+}
+
+/** Roman phonemes → Katakana */
+function phonemeToKatakana(s){
+  // Geminate (exclude m/n): double consonant → 'ッ'
+  s = s.replace(/([bcdfghjklpqrstvwxzy])\1/g, 'ッ$1'); // m,n excluded
+
+  const KANA = [];
+  const len = s.length;
+
+  const isVowel = (ch)=> ch==='a'||ch==='e'||ch==='i'||ch==='o'||ch==='u'||ch==='y';
+  const vowKana = (v)=> ({'a':'ア','e':'エ','i':'イ','o':'オ','u':'ウ','y':'イ'}[v]||'');
+
+  for(let i=0;i<len;i++){
+    let ch = s[i];
+    if(ch==='ː'){ // long mark from chor-rule only
+      if(KANA.length>0){
+        const prev = KANA[KANA.length-1];
+        if(/[アイウエオヤユヨ]/.test(prev[prev.length-1])){
+          KANA[KANA.length-1] = prev + 'ー';
+        }else{
+          KANA.push('ー');
+        }
+      }else{
+        KANA.push('ー');
+      }
+      continue;
+    }
+    if(ch==='ッ'){ KANA.push('ッ'); continue; }
+
+    const n1 = s[i+1] || '';
+    const n2 = s[i+2] || '';
+    const n3 = s[i+3] || '';
+
+    // ii → イ + ィ  （一般化）
+    if(ch==='i' && n1==='i'){
+      KANA.push('イ'); KANA.push('ィ'); i += 1; continue;
+    }
+
+    // Special: x s i → クスィ（exsilium/exsilio）
+    if(ch==='x' && n1==='s' && n2==='i'){
+      KANA.push('クスィ'); i += 2; continue;
+    }
+
+    // x + i → キシ（maxima 等の特例）
+    if(ch==='x' && n1==='i'){
+      KANA.push('キシ'); i += 1; continue;
+    }
+
+    // CC_EI placeholder → ッチェ/ッチ
+    if(ch==='\uE050'){
+      const v = n1;
+      if(v==='e'){ KANA.push('ッチェ'); i += 1; continue; }
+      if(v==='i'){ KANA.push('ッチ');  i += 1; continue; }
+    }
+
+    // NY placeholder + vowel → ニャ/ニェ/ニィ/ニョ/ニュ/ニィ
+    if(ch==='\uE041' && isVowel(n1)){
+      const v = n1;
+      const t = {'a':'ニャ','e':'ニェ','i':'ニィ','o':'ニョ','u':'ニュ','y':'ニィ'};
+      KANA.push(t[v]); i += 1; continue;
+    }
+
+    // kw / gw
+    if((ch==='k' && n1==='w') || (ch==='g' && n1==='w')){
+      const cons = ch, v = n2;
+      if(isVowel(v)){
+        const t = {
+          'k': {'a':'クァ','e':'クェ','i':'クィ','o':'クォ','u':'クゥ','y':'クィ'},
+          'g': {'a':'グァ','e':'グェ','i':'グィ','o':'グォ','u':'グゥ','y':'グィ'}
+        };
+        KANA.push(t[cons][v]); i += 2; continue;
+      }
+    }
+
+    // ch
+    if(ch==='c' && n1==='h'){
+      const v = n2;
+      if(isVowel(v)){
+        const t = {'a':'チャ','e':'チェ','i':'チ','o':'チョ','u':'チュ','y':'チ'};
+        KANA.push(t[v]); i += 2; continue;
+      }else{
+        // Christus 等（ch+子音）は /k/
+        KANA.push('ク'); i += 1; continue;
+      }
+    }
+
+    // sh
+    if(ch==='s' && n1==='h'){
+      const v = n2;
+      if(isVowel(v)){
+        const t = {'a':'シャ','e':'シェ','i':'シ','o':'ショ','u':'シュ','y':'シ'};
+        KANA.push(t[v]); i += 2; continue;
+      }else{ KANA.push('シ'); i += 1; continue; }
+    }
+
+    // ts + vowel
+    if(ch==='t' && n1==='s' && isVowel(n2)){
+      const v = n2;
+      const t = {'a':'ツァ','e':'ツェ','i':'ツィ','o':'ツォ','u':'ツ','y':'ツィ'};
+      KANA.push(t[v]); i += 2; continue;
+    }
+
+    // Original J (child y) placeholder → ヤ/イェ/イ/ヨ/ユ
+    if(ch==='\uE060' && isVowel(n1)){
+      const v = n1;
+      const t = {'a':'ヤ','e':'イェ','i':'イ','o':'ヨ','u':'ユ','y':'イ'};
+      KANA.push(t[v]); i += 1; continue;
+    }
+
+    // j + vowel (soft g) (ju→ユ)
+    if(ch==='j' && isVowel(n1)){
+      const v = n1;
+      const t = {'a':'ジャ','e':'ジェ','i':'ジ','o':'ジョ','u':'ユ','y':'ジ'};
+      KANA.push(t[v]); i += 1; continue;
+    }
+
+    // y + vowel
+    if(ch==='y' && isVowel(n1)){
+      const v = n1;
+      const t = {'a':'ヤ','e':'イェ','i':'イ','o':'ヨ','u':'ユ','y':'イ'};
+      KANA.push(t[v]); i += 1; continue;
+    }
+
+    // v + vowel (configurable)
+    if(ch==='v' && isVowel(n1)){
+      const v = n1;
+      const vuT = {'a':'ヴァ','e':'ヴェ','i':'ヴィ','o':'ヴォ','u':'ヴゥ','y':'ヴィ'};
+      KANA.push(vuT[v]); i += 1; continue;
+    }
+
+    // si → スィ（shi は別処理）
+    if(ch==='s' && n1==='i'){
+      KANA.push('スィ'); i += 1; continue;
+    }
+
+    // Single consonant + vowel
+    if(!isVowel(ch) && isVowel(n1)){
+      const v = n1; let kana = '';
+      switch(ch){
+        case 'k': kana = {'a':'カ','e':'ケ','i':'キ','o':'コ','u':'ク','y':'キ'}[v]; break;
+        case 'g': kana = {'a':'ガ','e':'ゲ','i':'ギ','o':'ゴ','u':'グ','y':'ギ'}[v]; break;
+        case 't': kana = {'a':'タ','e':'テ','i':'ティ','o':'ト','u':'トゥ','y':'ティ'}[v]; break;
+        case 'd': kana = {'a':'ダ','e':'デ','i':'ディ','o':'ド','u':'ドゥ','y':'ディ'}[v]; break;
+        case 's':
+          if(v==='i') kana='スィ';
+          else kana = {'a':'サ','e':'セ','o':'ソ','u':'ス','y':'スィ'}[v] || 'ス';
+          break;
+        case 'z': kana = {'a':'ザ','e':'ゼ','i':'ズィ','o':'ゾ','u':'ズ','y':'ズィ'}[v]; break;
+        case 'n': kana = {'a':'ナ','e':'ネ','i':'ニ','o':'ノ','u':'ヌ','y':'ニ'}[v]; break;
+        case 'm': kana = {'a':'マ','e':'メ','i':'ミ','o':'モ','u':'ム','y':'ミ'}[v]; break;
+        case 'r': kana = {'a':'ラ','e':'レ','i':'リ','o':'ロ','u':'ル','y':'リ'}[v]; break;
+        case 'l': kana = {'a':'ラ','e':'レ','i':'リ','o':'ロ','u':'ル','y':'リ'}[v]; break;
+        case 'p': kana = {'a':'パ','e':'ペ','i':'ピ','o':'ポ','u':'プ','y':'ピ'}[v]; break;
+        case 'b': kana = {'a':'バ','e':'ベ','i':'ビ','o':'ボ','u':'ブ','y':'ビ'}[v]; break;
+        case 'f': kana = {'a':'ファ','e':'フェ','i':'フィ','o':'フォ','u':'フ','y':'フィ'}[v]; break;
+        case 'w': kana = {'a':'ワ','e':'ウェ','i':'ウィ','o':'ウォ','u':'ウ','y':'ウィ'}[v]; break;
+        case 'h': kana = {'a':'ハ','e':'ヘ','i':'ヒ','o':'ホ','u':'フ','y':'ヒ'}[v]; break;
+        case 'q': kana = {'a':'クァ','e':'クェ','i':'クィ','o':'クォ','u':'クゥ','y':'クィ'}[v]; break;
+        case 'c': kana = {'a':'カ','e':'ケ','i':'キ','o':'コ','u':'ク','y':'キ'}[v]; break;
+        case 'x': // remaining x → クス (+i/e 小仮名)
+          kana = 'クス' + (v==='i' ? 'ィ' : v==='e' ? 'ェ' : '' ); break;
+        default: break;
+      }
+      if(kana){ KANA.push(kana); i += 1; continue; }
+    }
+
+    // Lone vowels
+    if(isVowel(ch)){
+      KANA.push(vowKana(ch)); continue;
+    }
+
+    // Nasal 'n' before consonant / end → ン
+    if(ch==='n'){
+      const nxt = s[i+1];
+      if(!isVowel(nxt)){ KANA.push('ン'); continue; }
+    }
+
+    // Standalone consonants
+    switch(ch){
+      case 'k': KANA.push('ク'); break;
+      case 'g': KANA.push('グ'); break;
+      case 'p': KANA.push('プ'); break;
+      case 'b': KANA.push('ブ'); break;
+      case 't': KANA.push('ト'); break;
+      case 'd': KANA.push('ド'); break;
+      case 's': KANA.push('ス'); break;
+      case 'z': KANA.push('ズ'); break;
+      case 'r': KANA.push('ル'); break;
+      case 'l': KANA.push('ル'); break;
+      case 'm': KANA.push('ム'); break;
+      case 'w': KANA.push('ウ'); break;
+      case 'y': KANA.push('イ'); break;
+      case 'j': KANA.push('ジ'); break;
+      case 'c': KANA.push('ク'); break;
+      case 'x': KANA.push('クス'); break;
+      case 'f': KANA.push('フ'); break;
+      default: KANA.push(ch);
+    }
+  }
+  return KANA.join('').replace(/ッー/g,'ッ');
+}
+
+/** Convert one Latin token (letters only) to Katakana */
+function convertToken(token){
+  const raw = token;
+  const lower = raw.toLowerCase();
+
+  // Exceptions: raw + normalized key lookup
+  if(EXCEPTIONS.has(lower)) return EXCEPTIONS.get(lower);
+  const normKey = normalizeStrip(lower);
+  if(EXCEPTIONS_NORM.has(normKey)) return EXCEPTIONS_NORM.get(normKey);
+
+  // Mark long vowels (disabled), then normalize
+  let norm = markLongVowelsBeforeStrip(raw);
+  norm = normalizeStrip(norm);
+
+  // Apply phoneme rules
+  let ph = applyPhonemeRules(norm);
+
+  // Finally to Katakana
+  const kana = phonemeToKatakana(ph);
+
+  // Ensure Katakana only (keep punctuation/space)
+  return kana.replace(/[^\u30A0-\u30FFー・「」、。！？\s]/g, '');
+}
+
+/** Main public API */
+function latinToChurchKatakana(text){
+  const re = /([A-Za-z\u00C0-\u024F\u1E00-\u1EFF]+)|([^A-Za-z\u00C0-\u024F\u1E00-\u1EFF]+)/g;
+  const out = [];
+  const it = (text||'').matchAll(re);
+  for(const m of it){
+    const letters = m[1], others = m[2];
+    if(letters){ out.push(convertToken(letters)); }
+    else if(others){ out.push(others); }
+  }
+  return out.join('');
+}
+
+// First paint
+status('待機中','idle');
+</script>
+</body>
+</html>
