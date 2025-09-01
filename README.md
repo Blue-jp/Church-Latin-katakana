@@ -7,7 +7,7 @@
 
 ## 使い方
 `index.html` をブラウザで開くか、公開URL（GitHub Pages等）にアクセスしてください。
-[[公開URLをここに記載]]
+[https://blue-jp.github.io/Church-Latin-katakana/]
 
 ## ライセンス
 **Prosperity Public License 3.0.0**  
