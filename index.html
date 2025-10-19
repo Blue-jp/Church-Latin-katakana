@@ -431,27 +431,42 @@ function applyPhonemeRules(w){
   s = s.replace(/[j]/g, JY_PH);
 
   // === (A) x→gz の事前マーキング層 ===
-  // A-0) 語頭 ex + 母音 → egz（語頭限定）
-  s = s.replace(/^ex(?=[aeiouy])/,'e'+XGZ);
-
-  // A-1) 語中の exh + 母音 / exs + 母音
+  // A-0) 語頭 ex + 母音の有声化（母音別）
+//  - exu- / exs- は有声化しない
+//  - exe- / exi- / exa- は無条件で egz-
+//  - exo- / exy- は直後母音が強勢のときのみ egz-
+(function handleWordInitialEX(){
+  if (!/^ex[aeiouy]/.test(s)) return;
+  if (s[2] === 'u' || /^exs/.test(s)) return;
+  const v = s[2];
+  if (v === 'e' || v === 'i' || v === 'a') {
+    s = s.replace(/^ex/, 'e' + XGZ);
+    return;
+  }
+  const stress = estimateStressNucleusStart(s);
+  if (stress === 2) {
+    s = s.replace(/^ex/, 'e' + XGZ);
+  }
+})();
+// A-1) 語中の exh + 母音 / exs + 母音
   s = s.replace(/\Bexh(?=[aeiouy])/g, 'e'+XGZ+'h'); // 語頭は除外
   s = s.replace(/\Bexs(?=[aeiouy])/g, 'e'+XGZ+'s'); // 語頭は除外
 
-  // A-2) 語中 x + 強勢直前母音
-  (function markXBeforeStressed(){
-    const sForStress = s.replace(new RegExp(XGZ,'g'),'x'); // マーカーを戻して推定
-    const stress = estimateStressNucleusStart(sForStress);
-    if(stress>0){
+  // A-2) 語中の「…ex + (直後母音が強勢) …」のみを有声化（Alexander 等）
+(function markInternalExBeforeStressed(){
+  const sForStress = s.replace(new RegExp(XGZ,'g'),'x');
+  const stress = estimateStressNucleusStart(sForStress);
+  if (typeof stress !== 'number' || stress <= 0) return;
+  if (sForStress[stress - 1] === 'x' && sForStress[stress - 2] === 'e') {
+    const v = sForStress[stress];
+    if (v !== 'u') {
       const arr = s.split('');
-      for(let i=1;i<arr.length-1;i++){
-        if(arr[i]==='x' && i+1===stress && isVowelChar(arr[i+1])){ arr[i]=XGZ; }
-      }
+      arr[stress - 1] = XGZ;
       s = arr.join('');
     }
-  })();
-
-  // === 基本置換 ===
+  }
+})();
+// === 基本置換 ===
   // Protect ch/sh
   s = s.replace(/ch/g, PCH).replace(/sh/g, PSH);
 
@@ -512,7 +527,9 @@ function applyPhonemeRules(w){
     return out;
   })(s);
 
-  // gn between vowels only → NY placeholder (ɲɲ)
+  // NEW: word-initial 'gn' + vowel → 'n'（gnatus→natus）
+  s = s.replace(/^gn(?=[aeiouy])/g, 'n');
+// gn between vowels only → NY placeholder (ɲɲ)
   s = s.replace(/([aeiouy])gn([aeiouy])/g, (_m,a,b)=> a + NY_PH + b);
 
   // mm -> nm (nasal assimilation)
